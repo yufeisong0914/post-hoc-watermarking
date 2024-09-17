@@ -58,9 +58,9 @@ def is_similar(x, y, threshold=0.5):
 class WtgbblModel(WatermarkModelForExistingText):
     def __init__(
             self, substitute_model_root: str, relatedness_model_root: str, w2v_model_root: str,
-            language: str = 'en', detect_mode: str = 'precise',
+            detect_mode: str = 'precise',
             tau_word: float = 0.8, tau_sent: float = 0.8, lamda: float = 0.83,
-            watermark_message_type: str = 'zero-bit',
+            language: str = 'en', watermark_message_type: str = 'zero-bit',
             use_z_test: bool = True, z_test_alpha: float = 0.05
     ):
         """
@@ -78,9 +78,8 @@ class WtgbblModel(WatermarkModelForExistingText):
             z_test_alpha: 显著性水平
         """
 
-        super().__init__(watermark_message_type, use_z_test, z_test_alpha)
+        super().__init__(language, watermark_message_type, use_z_test, z_test_alpha)
 
-        self.language = language.lower()
         self.detect_mode = detect_mode
         self.tau_word = tau_word
         self.tau_sent = tau_sent

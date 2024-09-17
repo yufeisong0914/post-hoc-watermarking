@@ -8,24 +8,6 @@ from tqdm import tqdm
 from models.wm_model import WatermarkModelForExistingText
 
 
-def count_secret_words(text: str, words: list[str]) -> float:
-    """
-    Count the number of secret words in text.
-    Args:
-        text:
-        words:
-
-    Returns:
-
-    """
-    green_words_num = 0
-    text_words = text.split()  # todo: spacy split?
-    for word in words:
-        if word in text_words:  # todo: 个数？
-            green_words_num += 1
-    return green_words_num / len(words)
-
-
 def cal_cosine_similarity(vector1: list[float], vector2: list[float]) -> float:
     # 计算两个向量的点积
     dot_product = np.dot(vector1, vector2)
@@ -40,7 +22,7 @@ def cal_cosine_similarity(vector1: list[float], vector2: list[float]) -> float:
     return cos_similarity
 
 
-def extract_floats_from_string(s):
+def extract_floats_from_string(s) -> list[float]:
     # 使用正则表达式匹配所有的浮点数
     float_pattern = r"[-+]?\d*\.\d+"
     floats = re.findall(float_pattern, s)
@@ -53,16 +35,17 @@ def extract_floats_from_string(s):
 
 class PostmarkModel(WatermarkModelForExistingText):
     def __init__(
-            self, embedder_model_name: str, inserter_model_name: str, secret_words_table_root: str,
-            embedder_model_open_source: bool = False, embedder_model_root: str = None,
+            self, embedder_model_name: str, inserter_model_name: str,
+            secret_words_table_path: str, load_secret_words_table: bool = True,
+            embedder_model_open_source: bool = False, embedder_model_path: str = None,
             embedder_model_key: str = None, embedder_model_base_url: str = None,
-            similarity_threshold: float = 0.7,
-            inserter_model_open_source: bool = False, inserter_model_root: str = None,
+            inserter_model_open_source: bool = False, inserter_model_path: str = None,
             inserter_model_key: str = None, inserter_model_base_url: str = None,
-            insertion_ratio: int = 0.12,
-            watermark_message_type: str = 'zero-bit',
+            insertion_ratio: int = 0.12, similarity_threshold: float = 0.7,
+            language: str = 'en', watermark_message_type: str = 'zero-bit',
+            use_z_test: bool = False,
     ):
-        super().__init__(watermark_message_type)
+        super().__init__(language, watermark_message_type, use_z_test)
 
         # "any embedding model can be used here"
         # TEXT-EMBEDDING-3-LARGE (OpenAI, 2024b)
@@ -71,8 +54,8 @@ class PostmarkModel(WatermarkModelForExistingText):
 
         self.embedder_model_open_source = embedder_model_open_source
         if embedder_model_open_source:  # 如果模型开源
-            if embedder_model_root:  # 如果给出模型本地路径
-                self.embedder_model_root = embedder_model_root
+            if embedder_model_path:  # 如果给出模型本地路径
+                self.embedder_model_root = embedder_model_path
             else:
                 self.embedder_model_root = embedder_model_name
             self.embedder_model = None  # todo: load model
@@ -80,9 +63,14 @@ class PostmarkModel(WatermarkModelForExistingText):
             self.embedder_model_key = embedder_model_key
             self.embedder_model_base_url = embedder_model_base_url
 
-        # 加载秘密单词表
-        self.secret_words_table_root = secret_words_table_root
-        self.similarity_threshold = similarity_threshold
+        # 插入表
+        self.secret_words_table_path = secret_words_table_path
+        if load_secret_words_table:
+            self.secret_words_table: list[tuple[str, list[float]]] = self._load_secret_table()
+        else:
+            self.secret_words_table = None
+        # todo: sql
+        self.new_words_table_runtime: list[tuple[str, list[float]]] = []
 
         # GPT-4O (OpenAI)
         # LLAMA-3-70B-INST (AI@Meta, 2024)
@@ -90,8 +78,8 @@ class PostmarkModel(WatermarkModelForExistingText):
 
         self.inserter_model_open_source = inserter_model_open_source
         if inserter_model_open_source:  # 如果模型开源
-            if inserter_model_root:
-                self.inserter_model_root = inserter_model_root
+            if inserter_model_path:
+                self.inserter_model_root = inserter_model_path
             else:
                 self.inserter_model_root = inserter_model_name
             self.inserter_model = None  # todo: load model
@@ -101,7 +89,10 @@ class PostmarkModel(WatermarkModelForExistingText):
 
         # The insertion ratio represents the percentage of the input text’s word count.
         self.insertion_ratio = insertion_ratio
-        self.nlp = spacy.load('en_core_web_sm')
+
+        self.similarity_threshold = similarity_threshold
+
+        self.nlp = spacy.load('en_core_web_sm')  # todo: remove
 
     def _embedding_from_api(self, text: str) -> list[float]:
         client = openai.OpenAI(
@@ -120,41 +111,58 @@ class PostmarkModel(WatermarkModelForExistingText):
         # todo
         pass
 
-    def _embedder(self, text: str, embed_level: str = 'sentence') -> list[float]:
+    def _embedder(self, text: str) -> list[float]:
         """
         The EMBEDDER needs to be capable of projecting both words and documents into a high-dimensional latent space.
         Args:
-            text: the input text(a sentence or a paragraph or a document)
+            text: the input text(a word or a sentence or a paragraph or a document)(a paragraph in this case).
         Returns:
             a high-dimensional vector of the input text.
         """
         if self.embedder_model_open_source:
-            embedding_list = self._embedding_from_open_source_model(text)
+            embedding = self._embedding_from_open_source_model(text)
         else:
-            embedding_list = self._embedding_from_api(text)
-        return embedding_list
+            embedding = self._embedding_from_api(text)
+        return embedding
+
+    def _load_secret_table(self) -> list[tuple[str, list[float]]]:
+        """
+        加载 the secret-words tabel.
+        Returns:
+            The secret-words tabel (list[tuple[word: str, embedding: list[float]]])
+        """
+        file = open(self.secret_words_table_path, 'r')
+        lines = file.readlines()
+        insert_table = []
+        for line in lines:
+            word = line.split(':')[0]
+            word_embedding = extract_floats_from_string(line)
+            insert_table.append((word, word_embedding))
+        return insert_table
 
     def _cal_insert_table(self, vector: list[float]) -> list[str]:
         """
+        calculate the insert-words table from the secret-words tabel.
+        Args:
+            vector: embedding of the input text.
         Returns:
-            Insert word table (list).
+            The insert-words table (list[str]).
         """
         insert_table = []
-        file = open(self.secret_words_table_root, 'r')  # todo: init load
 
-        lines = file.readlines()
-        bar = tqdm(total=len(lines))
-        for line in lines:
-            secret_word_embedding = extract_floats_from_string(line)
+        if self.secret_words_table is None:
+            secret_words_table = self._load_secret_table()
+        else:
+            secret_words_table = self.secret_words_table
+
+        bar = tqdm(total=len(secret_words_table))
+        for line in secret_words_table:
+            secret_word = line[0]
+            secret_word_embedding = line[1]
+            # 计算 输入的句子的嵌入 与 词汇表所有单词的嵌入 的相似度
             sim = cal_cosine_similarity(vector, secret_word_embedding)
-            if sim > self.similarity_threshold:
-                word = line.split(':')[0]
-                insert_table.append((word, sim))
-            # else:
-            #     word = line.split(':')[0]
-            #     print(word, sim)
+            insert_table.append((secret_word, sim))
             bar.update(1)
-        file.close()
 
         # 对列表进行排序，按照元组中的浮点数排序
         insert_table_sorted = sorted(insert_table, key=lambda x: x[1], reverse=True)
@@ -167,6 +175,40 @@ class PostmarkModel(WatermarkModelForExistingText):
         punctuation_removed = [token.text for token in doc_text if not token.is_punct]  # 去除标点符号
         top_n = len(punctuation_removed) * self.insertion_ratio
         return insert_table[:round(top_n)]
+
+    def _get_words_embedding(self, words: list[str]) -> list[list[float]]:
+        words_embedding = []
+        if self.secret_words_table is None:
+            secret_words_table = self._load_secret_table()
+        else:
+            secret_words_table = self.secret_words_table
+
+        bar = tqdm(total=len(words))
+        for word in words:
+            # 先在秘密表中找
+            find_word = False
+            for secret_word in secret_words_table:
+                if word == secret_word[0]:
+                    words_embedding.append(secret_word[1])
+                    find_word = True
+                    break
+            # 找不到，调模型
+            if not find_word:  # todo: sql
+                # 解决单词重复问题，降低模型调用次数
+                find_new_word = False
+                for new_word in self.new_words_table_runtime:
+                    if word == new_word[0]:
+                        words_embedding.append(new_word[1])
+                        find_new_word = True
+                        break
+                if not find_new_word:
+                    temp_embedding = self._embedding_from_api(word)
+                    words_embedding.append(temp_embedding)
+                    # 将不再秘密表中的单词加入‘运行时产生的新单词表’
+                    self.new_words_table_runtime.append((word, temp_embedding))
+            bar.update(1)
+        # self.new_words_table_runtime.clear()  # todo: 生命周期
+        return words_embedding
 
     def _inserting_from_api(self, text: str, words: list[str]) -> str:
         # word_list = ''
@@ -219,6 +261,36 @@ class PostmarkModel(WatermarkModelForExistingText):
             watermarked_text = self._inserting_from_api(text, words)
         return watermarked_text
 
+    def _count_insert_words(self, text: str, insert_words: list[str]) -> float:
+        """
+        Count the number of insert-words in text.
+        Args:
+            text:
+            insert_words:
+        Returns:
+        """
+        green_words_num = 0
+
+        # todo: text to words list
+
+        # method 1: use ' ' split
+        # text_words = text.split()
+
+        # method 2: spacy
+        doc_text = self.nlp(text)
+        text_words = [token.text for token in doc_text]  # 去除标点符号
+
+        insert_words_embedding = self._get_words_embedding(insert_words)
+        text_words_embedding = self._get_words_embedding(text_words)
+
+        for twe in text_words_embedding:
+            for swe in insert_words_embedding:
+                word_sim = cal_cosine_similarity(twe, swe)
+                if word_sim > self.similarity_threshold:
+                    green_words_num += 1
+
+        return green_words_num / len(insert_words)
+
     def watermark_text_generator(self, text: str) -> Dict[str, Any]:
         vector = self._embedder(text)
         insert_table = self._cal_insert_table(vector)
@@ -226,8 +298,8 @@ class PostmarkModel(WatermarkModelForExistingText):
         watermarked_text = self._inserter(text, insert_table_top)
         generator_result = {
             "watermarked_text": watermarked_text,
-            "watermarked_text_embedding": vector,
             "embedding_words": insert_table_top,
+            # "original_text_embedding": vector,  # todo: sql
         }
         return generator_result
 
@@ -235,18 +307,18 @@ class PostmarkModel(WatermarkModelForExistingText):
         vector = self._embedder(text)
         insert_table = self._cal_insert_table(vector)
         insert_table_top = self._get_insert_table_top(text, insert_table)
-        p = count_secret_words(text, insert_table_top)
+        p = self._count_insert_words(text, insert_table_top)
 
-        if p > 0.5:
+        if p > 0.3:
             watermarked = True
         else:
             watermarked = False
 
         detector_result = {
             "watermarked": watermarked,
-            "watermarked_text_embedding": vector,
-            "embedding_words": insert_table_top,
             "p_value": p,
+            "embedding_words": insert_table_top,
+            # "watermarked_text_embedding": vector,  # todo: sql
         }
         return detector_result
 

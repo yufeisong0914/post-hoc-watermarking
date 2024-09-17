@@ -2,7 +2,7 @@ import re
 import yake
 import spacy
 from datasets import load_from_disk
-from models.methods.rsfph_wtgbblm.mask_selector import MaskSelector
+from .mask_selector import MaskSelector
 
 
 # Find Proper Noun on sentence level.

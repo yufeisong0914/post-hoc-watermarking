@@ -122,12 +122,12 @@ class MaskSelector:
             for m_cand in mask_candidates:
                 if self._check_mask_candidate(m_cand, mask_word, keyword, ent_keyword):
                     mask_word.append(m_cand)
-                    mask_idx.append(m_cand.i)
+                    mask_idx.append(m_cand.item)
                     if len(mask_word) >= max_mask_cnt:
                         break
 
         mask_word = [x[1] for x in sorted(zip(mask_idx, mask_word), key=lambda x: x[0])]
-        offset = sen[0].i
+        offset = sen[0].item
         mask_idx.sort()
         mask_idx = [m - offset for m in mask_idx]
 
@@ -138,13 +138,13 @@ class MaskSelector:
         mask_idx = []
 
         if type == "adjacent":
-            offset = sen[0].i
+            offset = sen[0].item
             for k in keyword:
-                if k.i - offset < len(sen) - 1:
-                    mask_cand = sen[k.i - offset + 1]
+                if k.item - offset < len(sen) - 1:
+                    mask_cand = sen[k.item - offset + 1]
                     if self._check_mask_candidate(mask_cand, mask_word, keyword, ent_keyword):
                         mask_word.append(mask_cand)
-                        mask_idx.append(mask_cand.i)
+                        mask_idx.append(mask_cand.item)
         elif type == "child":
             for k in keyword:
                 mask_candidates = list(k.children)
@@ -152,7 +152,7 @@ class MaskSelector:
                 for mask_cand in mask_candidates:
                     if self._check_mask_candidate(mask_cand, mask_word, keyword, ent_keyword):
                         mask_word.append(mask_cand)
-                        mask_idx.append(mask_cand.i)
+                        mask_idx.append(mask_cand.item)
                         break
         elif type == "child_dep":
             mask_candidates = []
@@ -168,11 +168,11 @@ class MaskSelector:
                 for mask_cand in mask_candidates:
                     if self._check_mask_candidate(mask_cand, mask_word, keyword, ent_keyword):
                         mask_word.append(mask_cand)
-                        mask_idx.append(mask_cand.i)
+                        mask_idx.append(mask_cand.item)
                         break
 
         mask_word = [x[1] for x in sorted(zip(mask_idx, mask_word), key=lambda x: x[0])]
-        offset = sen[0].i
+        offset = sen[0].item
         mask_idx.sort()
         mask_idx = [m - offset for m in mask_idx]
 
@@ -199,7 +199,7 @@ class MaskSelector:
             for candidate in mask_candidates:
                 if self._check_mask_candidate(candidate, mask_words, all_entity_keywords, all_yake_keywords):
                     mask_words.append(candidate)
-                    mask_words_index.append(candidate.i)
+                    mask_words_index.append(candidate.item)
         #             if len(mask_words) == len(all_entity_keywords) + len(all_yake_keywords):
         #                 break
         #

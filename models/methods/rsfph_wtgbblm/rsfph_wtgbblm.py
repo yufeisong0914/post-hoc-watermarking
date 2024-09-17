@@ -8,7 +8,6 @@ import spacy
 from nltk.tokenize import sent_tokenize
 
 from .keyword_extractor import KeywordExtractor
-
 from .mask_selector import MaskSelector
 
 from ciwater_extrect_parals import lexical_substitute_transformer_model
@@ -60,27 +59,21 @@ def paragraph_tokenize(paragraph):
     return sent_tokenize(paragraph)
 
 
-class WatermarkModel(WatermarkModelForExistingText):
+class RspfhWtgbblModel(WatermarkModelForExistingText):
     def __init__(
-            self,
-            watermark_message_type: str = 'zero-bit',
+            self,  # paraphraser_model_name: str, paraphraser_model_root: str,
+            language: str = 'en', watermark_message_type: str = 'zero-bit',
             use_z_test: bool = True, z_test_alpha: float = 0.05
     ):
 
-        super().__init__(watermark_message_type, use_z_test, z_test_alpha)
+        super().__init__(language, watermark_message_type, use_z_test, z_test_alpha)
 
-        self.alpha = z_test_alpha
-        self.z_alpha = norm.ppf(1 - self.alpha, loc=0, scale=1)
-        self.p = 0.5
-
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = TransformerModel.from_pretrained(
+        self.paraphraser = TransformerModel.from_pretrained(
             'checkpoints/para/transformer/',
             'checkpoint_best.pt',
             bpe='subword_nmt',
             bpe_codes='checkpoints/para/transformer/codes.40000.bpe.en'
         ).cuda().eval()
-        self.tokenizer = self.model
 
         self.nlp = spacy.load('en_core_web_sm')
 
@@ -211,7 +204,7 @@ class WatermarkModel(WatermarkModelForExistingText):
         # bert_substitutes, bert_rank_substitutes, real_prev_scores, real_embed_scores
         outputs, candidates = (
             lexical_substitute_transformer_model(
-                self.model,  # 模型
+                self.paraphraser,  # 模型
                 doc_sentence.text,  # 原句
                 prefix_s,  # 句子前缀
                 mask_word,  # 目标单词

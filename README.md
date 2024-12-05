@@ -15,4 +15,4 @@ Please cite as:
 
     
 # Contact 
-If you have any question about how to run the code. Please contact alfredwatson@foxmail.com
+If you have any question about how to run the code. Please contact haojifei2000@gmail.com

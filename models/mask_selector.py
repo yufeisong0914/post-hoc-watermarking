@@ -199,7 +199,7 @@ class MaskSelector:
             for candidate in mask_candidates:
                 if self._check_mask_candidate(candidate, mask_words, all_entity_keywords, all_yake_keywords):
                     mask_words.append(candidate)
-                    mask_words_index.append(candidate.item)
+                    mask_words_index.append(candidate.i)
         #             if len(mask_words) == len(all_entity_keywords) + len(all_yake_keywords):
         #                 break
         #

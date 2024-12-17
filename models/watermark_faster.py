@@ -35,7 +35,7 @@ import re
 from models.keyword_extractor import KeywordExtractor
 from models.mask_selector import MaskSelector
 from ciwater_extrect_parals import lexical_substitute_transformer_model
-import util_string
+import models.util_string as util_string
 
 w2v_model_home = "/home/haojifei/develop_tools/w2v_models"
 
@@ -186,26 +186,26 @@ class watermark_model:
             )
 
         elif language == 'English':
-            self.relatedness_tokenizer = RobertaTokenizer.from_pretrained(
-                models_dir + '/FacebookAI/roberta-large-mnli'
-            )
-            self.relatedness_model = RobertaForSequenceClassification.from_pretrained(
-                models_dir + '/FacebookAI/roberta-large-mnli'
-            ).to(self.device)
+            # self.relatedness_tokenizer = RobertaTokenizer.from_pretrained(
+            #     models_dir + '/FacebookAI/roberta-large-mnli'
+            # )
+            # self.relatedness_model = RobertaForSequenceClassification.from_pretrained(
+            #     models_dir + '/FacebookAI/roberta-large-mnli'
+            # ).to(self.device)
+            #
+            # self.tokenizer = BertTokenizer.from_pretrained(models_dir + '/google-bert/bert-base-cased')
+            # self.model = BertForMaskedLM.from_pretrained(
+            #     models_dir + '/google-bert/bert-base-cased',
+            #     output_hidden_states=True
+            # ).to(self.device)
 
-            self.tokenizer = BertTokenizer.from_pretrained(models_dir + '/google-bert/bert-base-cased')
-            self.model = BertForMaskedLM.from_pretrained(
-                models_dir + '/google-bert/bert-base-cased',
-                output_hidden_states=True
-            ).to(self.device)
-
-            # self.model = TransformerModel.from_pretrained(
-            #     'checkpoints/para/transformer/',
-            #     'checkpoint_best.pt',
-            #     bpe='subword_nmt',
-            #     bpe_codes='checkpoints/para/transformer/codes.40000.bpe.en'
-            # ).cuda().eval()
-            # self.tokenizer = self.model
+            self.model = TransformerModel.from_pretrained(
+            '/home/haojifei/develop_tools/my_models/parals-checkpoints/para/transformer/',
+            'checkpoint_best.pt',
+            bpe='subword_nmt',
+            bpe_codes='/home/haojifei/develop_tools/my_models/parals-checkpoints/para/transformer/codes.40000.bpe.en'
+        ).cuda().eval()
+            self.tokenizer = self.model
 
             self.w2v_model = KeyedVectors.load_word2vec_format(
                 w2v_model_home + '/glove-wiki-gigaword-100.word2vec.txt',
@@ -234,10 +234,13 @@ class watermark_model:
             return cut_sent(paragraph)
         elif self.language == 'English':
             paragraph = util_string.preprocess_string(paragraph)  # 预处理一下
+            # todo: nltk
+            return sent_tokenize(paragraph)
+            # todo: spacy
             # doc_paragraph = self.nlp(paragraph)
             # sentences = [sentence.text for sentence in doc_paragraph.sents]
             # return [s for s in sentences if s.strip()]
-            return sent_tokenize(paragraph)
+
 
     def embed(self, paragraph):
         sentences = self.paragraph_tokenize(paragraph)
@@ -362,7 +365,7 @@ class watermark_model:
         # 为每一个maskword生成候选词
         all_candidates = []
         for i in mask_words_index_new:
-            _, candidates = self._candidates_generator(doc_sentence, i)
+            _, candidates = self.candidates_gen_v1(doc_sentence, i)
             good_candidates_index = list(range(0, len(candidates)))  # 首先假设所有的词都是好词
             good_candidates_index = token_bit_filter(good_candidates_index, candidates, doc_sentence[i - 1].text)
             good_candidates_index = self._token_detectable_filter(good_candidates_index, candidates, doc_sentence, i)

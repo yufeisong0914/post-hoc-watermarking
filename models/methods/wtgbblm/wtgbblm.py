@@ -1,31 +1,29 @@
+from typing import Dict, Any
+import re
+import string
+import hashlib
+from scipy.stats import norm
+import Levenshtein
 import nltk
 from nltk.corpus import stopwords
 from nltk import word_tokenize, pos_tag
+import spacy
+import gensim
+import gensim.downloader as api
+from gensim.models import KeyedVectors
 import torch
 import torch.nn.functional as F
 from torch import nn
-import hashlib
-from scipy.stats import norm
-import gensim
-import pdb
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import BertForMaskedLM, BertTokenizer, RobertaForSequenceClassification, RobertaTokenizer
 from transformers import BertForMaskedLM as WoBertForMaskedLM
 # from wobert import WoBertTokenizer
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-
-from transformers import BertForMaskedLM, BertTokenizer, RobertaForSequenceClassification, RobertaTokenizer
-import gensim.downloader as api
-import Levenshtein
-import string
-import spacy
 # import paddle
 from jieba import posseg
-
-from typing import Dict, Any
-from gensim.models import KeyedVectors
 from models.wm_model import WatermarkModelForExistingText
 
+
 # paddle.enable_static()
-import re
 
 
 def cut_sent(para):
@@ -57,7 +55,7 @@ def is_similar(x, y, threshold=0.5):
 
 class WtgbblModel(WatermarkModelForExistingText):
     def __init__(
-            self, substitute_model_root: str, relatedness_model_root: str, w2v_model_root: str,
+            self, substitute_model_path: str, relatedness_model_path: str, w2v_model_root: str,
             detect_mode: str = 'precise',
             tau_word: float = 0.8, tau_sent: float = 0.8, lamda: float = 0.83,
             language: str = 'en', watermark_message_type: str = 'zero-bit',
@@ -65,8 +63,8 @@ class WtgbblModel(WatermarkModelForExistingText):
     ):
         """
         Args:
-            substitute_model_root: 生成替换词、计算单词的上下文嵌入相似度
-            relatedness_model_root: 计算句子相似度
+            substitute_model_path: 生成替换词、计算单词的上下文嵌入相似度
+            relatedness_model_path: 计算句子相似度
             w2v_model_root: word to vector model
             language: text language (default english)
             detect_mode: [fast, precise]
@@ -77,59 +75,7 @@ class WtgbblModel(WatermarkModelForExistingText):
             use_z_test:
             z_test_alpha: 显著性水平
         """
-
         super().__init__(language, watermark_message_type, use_z_test, z_test_alpha)
-
-        self.detect_mode = detect_mode
-        self.tau_word = tau_word
-        self.tau_sent = tau_sent
-        self.lamda = lamda
-        self.cn_tag_black_list = {
-            '',  # 空字符串
-            'x',  # 非语素字
-            'u',  # 助词
-            'j',  # 简称略语
-            'k',  # 后接成分
-            'zg',  # 状态词语素
-            'y',  # 语气词
-            'eng',  # 英文字符
-            'uv',  # 虚拟谓词
-            'uj',  # 助词
-            'ud',  # 结构助词
-            'nr',  # 人名
-            'nrfg',  # 人名
-            'nrt',  # 人名
-            'nw',  # 作品名
-            'nz',  # 其他专名
-            'ns',  # 地名
-            'nt',  # 机构团体
-            'm',  # 数词
-            'mq',  # 数词
-            'r',  # 代词
-            'w',  # 标点符号
-            'PER',  # 个人，指代人物的名称或称谓
-            'LOC',  # 地点，指代地理位置或地点的名称
-            'ORG'  # 组织，指代公司、机构或团体的名称
-        }  # set(['','f','u','nr','nw','nz','m','r','p','c','w','PER','LOC','ORG'])
-        self.en_tag_white_list = {
-            'MD',  # 情态动词（Modal）
-            'NN',  # 名词（Noun，单数形式）
-            'NNS',  # 名词（Noun，复数形式）
-            'UH',  # 感叹词（Interjection）
-            'VB',  # 动词（Verb，基本形式）
-            'VBD',  # 动词（Verb，过去式）
-            'VBG',  # 动词（Verb，现在分词）
-            'VBN',  # 动词（Verb，过去分词）
-            'VBP',  # 动词（Verb，非第三人称单数）
-            'VBZ',  # 动词（Verb，第三人称单数）
-            'RP',  # 介词副词（Particle）
-            'RB',  # 副词（Adverb）
-            'RBR',  # 副词（Adverb，比较级）
-            'RBS',  # 副词（Adverb，最高级）
-            'JJ',  # 形容词（Adjective）
-            'JJR',  # 形容词（Adjective，比较级）
-            'JJS'  # 形容词（Adjective，最高级）
-        }
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -149,15 +95,42 @@ class WtgbblModel(WatermarkModelForExistingText):
                 'sgns.merge.word.bz2', binary=False, unicode_errors='ignore', limit=50000
             )
 
+            self.cn_tag_black_list = {
+                '',  # 空字符串
+                'x',  # 非语素字
+                'u',  # 助词
+                'j',  # 简称略语
+                'k',  # 后接成分
+                'zg',  # 状态词语素
+                'y',  # 语气词
+                'eng',  # 英文字符
+                'uv',  # 虚拟谓词
+                'uj',  # 助词
+                'ud',  # 结构助词
+                'nr',  # 人名
+                'nrfg',  # 人名
+                'nrt',  # 人名
+                'nw',  # 作品名
+                'nz',  # 其他专名
+                'ns',  # 地名
+                'nt',  # 机构团体
+                'm',  # 数词
+                'mq',  # 数词
+                'r',  # 代词
+                'w',  # 标点符号
+                'PER',  # 个人，指代人物的名称或称谓
+                'LOC',  # 地点，指代地理位置或地点的名称
+                'ORG'  # 组织，指代公司、机构或团体的名称
+            }  # set(['','f','u','nr','nw','nz','m','r','p','c','w','PER','LOC','ORG'])
         elif self.language in ['english', 'en']:
             self.relatedness_model = RobertaForSequenceClassification.from_pretrained(
-                relatedness_model_root
+                relatedness_model_path
             ).to(self.device)
-            self.relatedness_tokenizer = RobertaTokenizer.from_pretrained(relatedness_model_root)
+            self.relatedness_tokenizer = RobertaTokenizer.from_pretrained(relatedness_model_path)
 
-            self.tokenizer = BertTokenizer.from_pretrained(substitute_model_root)
+            self.tokenizer = BertTokenizer.from_pretrained(substitute_model_path)
             self.model = BertForMaskedLM.from_pretrained(
-                substitute_model_root, output_hidden_states=True
+                substitute_model_path, output_hidden_states=True
             ).to(self.device)
 
             # self.w2v_model = api.load("glove-wiki-gigaword-100")
@@ -167,23 +140,30 @@ class WtgbblModel(WatermarkModelForExistingText):
             self.stop_words = set(stopwords.words('english'))
             self.nlp = spacy.load('en_core_web_sm')
 
-    def cut(self, ori_text, text_len):
-        if self.language in ['chinese', 'zh']:
-            if len(ori_text) > text_len + 5:
-                ori_text = ori_text[:text_len + 5]
-            if len(ori_text) < text_len - 5:
-                return 'Short'
-            return ori_text
-        elif self.language in ['english', 'en']:
-            tokens = self.tokenizer.tokenize(ori_text)
-            if len(tokens) > text_len + 5:
-                ori_text = self.tokenizer.convert_tokens_to_string(tokens[:text_len + 5])
-            if len(tokens) < text_len - 5:
-                return 'Short'
-            return ori_text
-        else:
-            print(f'Unsupported Language:{self.language}')
-            raise NotImplementedError
+            self.en_tag_white_list = {
+                'MD',  # 情态动词（Modal）
+                'NN',  # 名词（Noun，单数形式）
+                'NNS',  # 名词（Noun，复数形式）
+                'UH',  # 感叹词（Interjection）
+                'VB',  # 动词（Verb，基本形式）
+                'VBD',  # 动词（Verb，过去式）
+                'VBG',  # 动词（Verb，现在分词）
+                'VBN',  # 动词（Verb，过去分词）
+                'VBP',  # 动词（Verb，非第三人称单数）
+                'VBZ',  # 动词（Verb，第三人称单数）
+                'RP',  # 介词副词（Particle）
+                'RB',  # 副词（Adverb）
+                'RBR',  # 副词（Adverb，比较级）
+                'RBS',  # 副词（Adverb，最高级）
+                'JJ',  # 形容词（Adjective）
+                'JJR',  # 形容词（Adjective，比较级）
+                'JJS'  # 形容词（Adjective，最高级）
+            }
+
+        self.lamda = lamda
+        self.tau_word = tau_word
+        self.tau_sent = tau_sent
+        self.detect_mode = detect_mode
 
     def sent_tokenize(self, ori_text):
         if self.language in ['chinese', 'zh']:
@@ -627,3 +607,8 @@ class WtgbblModel(WatermarkModelForExistingText):
             "z_score": z_score,
         }
         return detector_result
+
+if __name__ == "__main__":
+    print('Watermarking Text Generated by Black-Box Language Models (WTGBBLM)')
+    print('Author: KiYoon Yoo, et al.')
+    print('Email: 961230@snu.ac.kr')

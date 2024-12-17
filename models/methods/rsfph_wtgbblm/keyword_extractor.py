@@ -1,7 +1,12 @@
 import re
+
+from datasets import load_from_disk
 import yake
 import spacy
-from datasets import load_from_disk
+from spacy.tokens.doc import Doc
+from spacy.tokens.span import Span
+from spacy.tokens.token import Token
+
 from .mask_selector import MaskSelector
 
 
@@ -29,13 +34,14 @@ class KeywordExtractor:
         self.entity_black_list = ["GPE", "ORG", "PERSON", "WORK_OF_ART", "EVENT"]
         self.yake_pos_black_list = ["NOUN", "PROPN"]
 
-    def extract_keyword(self, doc_text, keyword_extract_rate):
+    def extract_keyword(self, doc_text: Doc, keyword_extract_rate: float):
         """
         提取句子中的关键词（“关键词"是句子中不太可能被修改的词）
         Args:
             doc_text: 经过spaCy模型处理过的文本对象doc
             keyword_extract_rate: 率
-        Returns: 命名实体关键词列表 和 yake关键词列表
+        Returns:
+            命名实体关键词列表 和 yake关键词列表
         """
         # 去除标点符号
         punctuation_removed = [token.text for token in doc_text if not token.is_punct]
@@ -119,20 +125,9 @@ if __name__ == "__main__":
     mask_selector_ciwater = MaskSelector(custom_keywords=['101'], method='grammar', mask_order_by='dep')
     all_keywords, all_entity_keywords = [], []
 
-    # corpus_new = preprocess_sentences(corpus[0:5])
     spacy_model = spacy.load("en_core_web_sm")
 
     sentences = []
-
-    a_paragraph = "2023, for movies, will be known as the year “Barbenheimer” thrived, while Marvel, DC, and Disney (yes, " \
-                  + "we know Marvel is a part of Disney, but we’re talking brands here) took a notable hit. What will this " \
-                  + "mean for 2024 at the multiplex? Well, we don’t know what’ll rake in the most dough, and we’re not " \
-                  + "trying to predict the winners and losers, but we do know what we’re curious to see. And we’ve got a " \
-                  + "list of 40 flippin’ films here that we’re intrigued by for next year."
-    a_doc_p = spacy_model(a_paragraph.strip())
-    for sen in a_doc_p.sents:
-        sentences.append(sen.text)
-
     for paragraph in corpus:
         doc_paragraph = spacy_model(paragraph.strip())
         for sent in doc_paragraph.sents:
@@ -144,7 +139,7 @@ if __name__ == "__main__":
             all_keywords.append(keywords)
             all_entity_keywords.append(entity_keywords)
             mask_idx, mask_word = mask_selector_ciwater.return_mask(
-                doc_sentence, all_entity_keywords=keywords, all_yake_keywords=entity_keywords
+                doc_sentence, entity_keywords=keywords, yake_keywords=entity_keywords
             )
             # print(doc_sentence)
         sentences = []

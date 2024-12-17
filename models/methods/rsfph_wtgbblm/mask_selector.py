@@ -1,5 +1,9 @@
 from string import punctuation
 
+from spacy.tokens.doc import Doc
+from spacy.tokens.span import Span
+from spacy.tokens.token import Token
+
 
 def _contains_punctuation(token):
     """
@@ -93,15 +97,23 @@ class MaskSelector:
             mask_order_by = 'pos'
         self.mask_order_by = mask_order_by
 
-    def return_mask(self, doc_text, all_entity_keywords: list, all_yake_keywords: list):
+        self.keyword_mask = "adjacent"  # "child", "child_dep"
+
+    def return_mask(
+            self, doc_text: Doc, entity_keywords: list[str], yake_keywords: list[str]
+    ):
         if self.method == "keyword_disconnected":
-            return self.keyword_disconnected(doc_text, all_entity_keywords, all_yake_keywords)
+            return self.keyword_disconnected(
+                doc_text, entity_keywords, yake_keywords
+            )
         elif self.method == "keyword_connected":
             return self.keyword_connected(
-                doc_text, all_entity_keywords, all_yake_keywords, type=self.keyword_mask
+                doc_text, entity_keywords, yake_keywords, type=self.keyword_mask
             )
         elif self.method == "grammar":
-            return self.grammar_component(doc_text, all_entity_keywords, all_yake_keywords)
+            return self.grammar_component(
+                doc_text, entity_keywords, yake_keywords
+            )
 
     def keyword_disconnected(self, sen, keyword, ent_keyword):
         max_mask_cnt = len(keyword)
@@ -178,7 +190,7 @@ class MaskSelector:
 
         return mask_idx, mask_word
 
-    def grammar_component(self, doc_text, all_entity_keywords: list, all_yake_keywords: list):
+    def grammar_component(self, doc_text: Doc, entity_keywords: list[str], yake_keywords: list[str]):
         if self.mask_order_by == "dep":
             text_deps = [token.dep_ for token in doc_text]
             ordering = self.dep_ordering
@@ -187,39 +199,37 @@ class MaskSelector:
             ordering = self.pos_ordering
 
         # 把doc_sentence中的token按照ordering的顺序筛选出来
-        mask_candidates = []  # list[spacy.Token]
+        mask_candidates = []  ## type: list[spacy.Token]
         for o in ordering:
-            for i in range(len(text_deps)):
-                if text_deps[i] == o:
+            # for i in range(len(text_deps)):
+            #     if text_deps[i] == o:
+            #         mask_candidates.append(doc_text[i])
+            for i, word_dep_label in enumerate(text_deps):
+                if word_dep_label == o:
                     mask_candidates.append(doc_text[i])
-        # print(mask_candidates)
 
-        mask_words_index, mask_words = [], []  # mask_words的类型是spaCy的Token
+        mask_words_index = []  # mask_words的类型是spaCy的Token
+        mask_words = []
         if mask_candidates:
             for candidate in mask_candidates:
-                if self._check_mask_candidate(candidate, mask_words, all_entity_keywords, all_yake_keywords):
+                if self._check_mask_candidate(candidate, mask_words, entity_keywords, yake_keywords, False):
                     mask_words.append(candidate)
-                    mask_words_index.append(candidate.item)
-        #             if len(mask_words) == len(all_entity_keywords) + len(all_yake_keywords):
-        #                 break
-        #
-        # mask_words = [x[1] for x in sorted(zip(mask_words_index, mask_words), key=lambda x: x[0])]
-        # offset = doc_text[0].i
-        # mask_words_index.sort()
-        # mask_words_index = [m - offset for m in mask_words_index]
+                    mask_words_index.append(candidate.i)
 
-        return mask_words_index, mask_words
+        # return mask_words_index, mask_words
+        return mask_words_index
 
     def _check_mask_candidate(
-            self, mask_candidate, mask_word, all_entity_keywords=None, all_yake_keywords=None, keyword_ablate=False
+            self, mask_candidate, mask_words,
+            entity_keywords: list[str] = None, yake_keywords: list[str] = None, keyword_ablate: bool = False
     ):
-        if all_yake_keywords is None:
-            all_yake_keywords = []
-        if all_entity_keywords is None:
-            all_entity_keywords = []
+        if yake_keywords is None:
+            yake_keywords = []
+        if entity_keywords is None:
+            entity_keywords = []
 
         if keyword_ablate:
-            if (mask_candidate not in all_entity_keywords
+            if (mask_candidate not in entity_keywords
                     and not mask_candidate.is_punct
                     and not mask_candidate.pos_ == "PART"
                     and not _contains_punctuation(mask_candidate)
@@ -228,13 +238,14 @@ class MaskSelector:
             else:
                 return False
 
-        if (mask_candidate not in all_entity_keywords  # 不在命名实体关键词列表
-                and mask_candidate not in all_yake_keywords  # 不在yake关键词列表
-                and mask_candidate not in mask_word  # todo: 不在已选掩码词列表mask_word?
-                and not mask_candidate.is_punct  # 不是标点符号mask_cand.is_punct
-                and not mask_candidate.pos_ == "PART"  # 不是语气助词mask_cand.pos_ == "PART"
-                and not _contains_punctuation(mask_candidate)  # 不包含标点符号_contains_punct(mask_cand)
-                and mask_candidate.text not in self.custom_keywords):  # 不在自定义message中，即self.custom_keywords
+        if (mask_candidate not in entity_keywords  # 不在命名实体关键词列表
+                and mask_candidate not in yake_keywords  # 不在yake关键词列表
+                and mask_candidate not in mask_words  # 不在已选掩码词列表 mask_word
+                and not mask_candidate.is_punct  # 不是标点符号 mask_cand.is_punct
+                and not mask_candidate.pos_ == "PART"  # 不是语气助词 mask_cand.pos_ == "PART"
+                and not _contains_punctuation(mask_candidate)  # 不包含标点符号 _contains_punct(mask_cand)
+                and mask_candidate.text not in self.custom_keywords  # 不在自定义message中，即self.custom_keywords
+        ):
             return True
         else:
             return False

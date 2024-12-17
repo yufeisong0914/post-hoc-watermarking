@@ -63,21 +63,6 @@ def remove_adjacent_commas(input_string):
     return output_string
 
 
-class TextFactory:
-    def __init__(self, language: str = 'en'):
-        self.language = language
-
-
-def text2sentences(text: str) -> list[str]:
-    pass
-
-
-def text2word(text: str) -> list[str]:
-    # words = []
-    # nlp = spacy.load('en_core_web_sm')
-    pass
-
-
 if __name__ == "__main__":
 
     root = '/home/haojifei/develop_things/nlp_projects/parals-watermarking/ciwater_output/'

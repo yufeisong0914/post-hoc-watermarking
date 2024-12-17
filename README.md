@@ -112,7 +112,7 @@ The code supports the following datasets, which were used in our experiments:
 - `medicine`
 - `reddit_eli5`
 
-You can download the required datasets from [huggingface]([dataset-hc3]) or use the preprocessed versions provided in the `/ciwater_output/*` directory of this repository.
+You can download the required datasets from [huggingface](dataset-hc3) or use the preprocessed versions provided in the `/ciwater_output/*` directory of this repository.
 
 # Citation
 

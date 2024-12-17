@@ -5,8 +5,8 @@ import util_string
 import random
 from tqdm import tqdm
 
-openai.api_key = 'sk-d812d3c3aa4652c8a3375022e71539defb0085e450823780'  # 3.5专用
-openai.base_url = 'https://sapi.onechat.fun/v1/'  # 3.5专用
+openai.api_key = ''
+openai.base_url = ''
 
 Instruction = 'Please polish the input text without changing its meaning and structure.'
 Input = 'The input text is:'

@@ -21,4 +21,8 @@ Please cite as:
 }
 ```  
 # Contact 
+<<<<<<< HEAD
 If you have any question about how to run the code. Please contact haojifei2000@gmail.com
+=======
+If you have any question about how to run the code. Please contact haojifei2000@gmail.com
+>>>>>>> 75af6ac4bc241a6f633b0623c827e1ed22ee2365
